@@ -62,13 +62,12 @@ int parse_port(const char *str, uint16_t *port_p) {
 char* get_time() {
     time_t t;
     struct tm *tm_info;
-    char *time_str = (char*)malloc(20);; // Adjust the size based on your format
+    char *time_str = (char*)malloc(20); // Adjust the size based on your format
 
     time(&t);
     tm_info = localtime(&t);
 
-    // Format the time string
-    strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", tm_info);
+    snprintf(time_str, 20, "%04d-%02d-%02d %02d:%02d:%02d", 1900 + tm_info->tm_year, tm_info->tm_mon, tm_info->tm_mday, tm_info->tm_hour, tm_info->tm_min, tm_info->tm_sec);
 
     return time_str;
 }

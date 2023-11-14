@@ -114,6 +114,17 @@ static void close_server_handles(struct server_state *state) {
   }
 }
 
+int* get_children(struct server_state *state) {
+  int size = sizeof(state->children);
+  int *children = malloc(size);
+
+  for (int i = 0; i < size; i++) {
+    children[i] = state->children[i].worker_fd;
+  }
+
+  return children;
+}
+
 static int handle_connection(struct server_state *state) {
   struct sockaddr addr;
   socklen_t addrlen = sizeof(addr);
@@ -201,16 +212,14 @@ static int handle_w2s_read(struct server_state *state, int index) {
 
   /* this means the worker closed its end of the socket pair */
   if (r == 0){
-     handle_s2w_closed(state, index);
-     return 0;
-  } else {
-    //handle_client_message(state, index, buf);
-    printf("%s\n", buf);
+    handle_s2w_closed(state, index);
+    return 0;
   }
 
   /* notify each worker */
   for (i = 0; i < MAX_CHILDREN; i++) {
     state->children[i].pending = 1;
+    write(state->children[i].worker_fd, buf, strlen(buf) + 1);
   }
 
   return 0;

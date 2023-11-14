@@ -10,16 +10,16 @@
 #include "server.h"
 #include "worker.h"
 
+
 /**
  * @brief Reads an incoming notification from the server and notifies
  *        the client.
  */
-static int handle_s2w_notification(struct worker_state *state) {
-  //printf("WOOHOO %s\n", state->server_fd);
-  //api_send(&state->api, state->user.data);
-  
-  printf(">%s\n", state->user.data);
-  api_send(&state->api, "Another worker sent a message, but I cant retrieve the message wtf");
+static int handle_s2w_notification(struct worker_state *state, const char *msg) {
+  if (strcmp(msg, "") == 0)
+    return 0;
+  if (state->user.online == 1)
+    api_send(&state->api, msg);
   
   return 0;
 }
@@ -31,14 +31,13 @@ static int handle_s2w_notification(struct worker_state *state) {
  */
 /* TODO call this function to notify other workers through server */
 __attribute__((unused))
-static int notify_workers(struct worker_state *state) {
-  char buf = 0;
+static int notify_workers(struct worker_state *state, const char *msg) {
   ssize_t r;
 
   /* we only need to send something to notify the other workers,
    * data does not matter
    */
-  r = write(state->server_fd, &buf, sizeof(buf));
+  r = write(state->server_fd, msg, MAX_DATA_LENGTH);
   if (r < 0 && errno != EPIPE) {
     perror("error: write of server_fd failed");
     return -1;
@@ -48,68 +47,110 @@ static int notify_workers(struct worker_state *state) {
 
 static int handle_user_registration(struct worker_state *state, int is_login, char *user, char *password) {
   FILE *file = fopen("users.db", "r+");
-    
-    if (file == NULL) {
-        perror("Error opening file");
-        snprintf(state->user.data, MAX_DATA_LENGTH, "Error registering " YELLOW "user" RESET);
-        return 0;
-    }
-
-    char line[MAX_DATA_LENGTH];
-
-    while (fgets(line, sizeof(line), file) != NULL) {
-        // Process each row
-        char *token = strtok(line, "\t");
-        int count = 0;
-        int is_user = 0;
-        
-        while (token != NULL) {
-          // Process each field
-          if (is_user == 1 && count == 1) {
-            token[strlen(token) - 1] = '\0';
-            if (strcmp(password, token) == 0) {
-              snprintf(state->user.username, MAX_DATA_LENGTH, "%s", user);
-              snprintf(state->user.data, MAX_DATA_LENGTH, YELLOW "Logged in" RESET " as %s%s", state->user.color, user);
-              fclose(file);
-              return 1;
-            } else {
-              snprintf(state->user.data, MAX_DATA_LENGTH, YELLOW "Username" RESET " or " YELLOW "password " RED "incorrect" RESET);
-              fclose(file);
-              return 0;
-            }
-          }
-
-          is_user = 0;
-
-          if (count == 0 && strcmp(user, token) == 0) {
-            if (is_login == 1) {
-              is_user = 1;
-            } else {
-              snprintf(state->user.data, MAX_DATA_LENGTH, YELLOW "Username" ORANGE " already exists" RESET);
-              fclose(file);
-              return 0;
-            }
-          }
-          
-          // Move to the next field
-          token = strtok(NULL, "\t");
-          count++;
-        }
-    }
-
-    fseek(file, 0, SEEK_END);
-    fprintf(file, "%s\t%s\n", user, password);
-
-    fclose(file);
-
-    if (is_login) {
-      snprintf(state->user.data, MAX_DATA_LENGTH, YELLOW "User" RED " not found " RESET);
+  
+  if (file == NULL) {
+      perror("Error opening file");
+      snprintf(state->user.data, MAX_DATA_LENGTH, "Error registering " YELLOW "user" RESET);
       return 0;
-    }
+  }
 
-    snprintf(state->user.data, MAX_DATA_LENGTH, YELLOW "User" RESET " registered " GREEN "correctly" YELLOW "\nLogged in" RESET " as %s%s", state->user.color, user);
-    snprintf(state->user.username, MAX_DATA_LENGTH, "%s", user);
-    return 1;
+  char line[MAX_DATA_LENGTH];
+
+  while (fgets(line, sizeof(line), file) != NULL) {
+      // Process each row
+      char *token = strtok(line, "\t");
+      int count = 0;
+      int is_user = 0;
+      
+      while (token != NULL) {
+        // Process each field
+        if (is_user == 1 && count == 1) {
+          token[strlen(token) - 1] = '\0';
+          if (strcmp(password, token) == 0) {
+            snprintf(state->user.username, MAX_DATA_LENGTH, "%s", user);
+            snprintf(state->user.data, MAX_DATA_LENGTH, YELLOW "Logged in" RESET " as %s%s" RESET, state->user.color, user);
+            fclose(file);
+            return 1;
+          } else {
+            snprintf(state->user.data, MAX_DATA_LENGTH, YELLOW "Username" RESET " or " YELLOW "password " RED "incorrect" RESET);
+            fclose(file);
+            return 0;
+          }
+        }
+
+        is_user = 0;
+
+        if (count == 0 && strcmp(user, token) == 0) {
+          if (is_login == 1) {
+            is_user = 1;
+          } else {
+            snprintf(state->user.data, MAX_DATA_LENGTH, YELLOW "Username" ORANGE " already exists" RESET);
+            fclose(file);
+            return 0;
+          }
+        }
+        
+        // Move to the next field
+        token = strtok(NULL, "\t");
+        count++;
+      }
+  }
+
+  fseek(file, 0, SEEK_END);
+  fprintf(file, "\n%s\t%s", user, password);
+
+  fclose(file);
+
+  if (is_login) {
+    snprintf(state->user.data, MAX_DATA_LENGTH, YELLOW "User" RED " not found " RESET);
+    return 0;
+  }
+
+  snprintf(state->user.data, MAX_DATA_LENGTH, YELLOW "User" RESET " registered " GREEN "correctly" YELLOW "\nLogged in" RESET " as %s%s" RESET, state->user.color, user);
+  snprintf(state->user.username, MAX_DATA_LENGTH, "%s", user);
+  return 1;
+}
+
+static void save_chat(struct worker_state *state) {
+  FILE *file = fopen("chat.db", "r+");
+  
+  if (file == NULL) {
+      perror("Error opening file");
+      snprintf(state->user.data, MAX_DATA_LENGTH, "Error sending " YELLOW "message" RESET);
+      return;
+  }
+  
+  fseek(file, 0, SEEK_END);
+  fprintf(file, "\n%s", state->user.data);
+
+  fclose(file);
+}
+
+static void send_chat(struct worker_state *state) {
+  FILE *file = fopen("chat.db", "r+");
+  
+  if (file == NULL) {
+      perror("Error opening file");
+      snprintf(state->user.data, MAX_DATA_LENGTH, "Error sending " YELLOW "message" RESET);
+      return;
+  }
+
+  char line[MAX_DATA_LENGTH];
+  
+  while (fgets(line, sizeof(line), file) != NULL) {
+    // Process each row
+    char *token = strtok(line, "\t");
+    
+    while (token != NULL) {
+      // Process each field
+      api_send(&state->api, token);
+      
+      // Move to the next field
+      token = strtok(NULL, "\t");
+    }
+  }
+
+  fclose(file);
 }
 
 /**
@@ -118,7 +159,10 @@ static int handle_user_registration(struct worker_state *state, int is_login, ch
  * @param msg     Message to handle
  */
 static int execute_request(struct worker_state *state, const struct api_msg *msg) {
-  char *buffer = msg->data;
+  char *time = get_time();
+  char buffer[MAX_DATA_LENGTH - strlen(state->user.username) - strlen(time) - 2];
+  strcpy(buffer, msg->data);
+  
   int count = 0;
   char *words[5];
   char *token = strtok(msg->data, " ");
@@ -147,10 +191,18 @@ static int execute_request(struct worker_state *state, const struct api_msg *msg
       snprintf(state->user.data, MAX_DATA_LENGTH, YELLOW "Logged out" RESET);
     }
   } else if (count == 2 && strcmp(words[0], "/color") == 0) {
-    if (strcmp(words[0], "red") == 0) {
+    if (strcmp(words[1], "red") == 0) {
       state->user.color = RED;
-    } else if (strcmp(words[0], "/color") == 0) {
-
+      snprintf(state->user.data, MAX_DATA_LENGTH, "Color changed to " RED "red" RESET);
+    } else if (strcmp(words[1], "orange") == 0) {
+      state->user.color = ORANGE;
+      snprintf(state->user.data, MAX_DATA_LENGTH, "Color changed to " ORANGE "orange" RESET);
+    } else if (strcmp(words[1], "yellow") == 0) {
+      state->user.color = YELLOW;
+      snprintf(state->user.data, MAX_DATA_LENGTH, "Color changed to " YELLOW "yellow" RESET);
+    } else if (strcmp(words[1], "green") == 0) {
+      state->user.color = GREEN;
+      snprintf(state->user.data, MAX_DATA_LENGTH, "Color changed to " GREEN "green" RESET);
     } else {
       snprintf(state->user.data, MAX_DATA_LENGTH, "Unknown color");
     }
@@ -170,6 +222,11 @@ static int execute_request(struct worker_state *state, const struct api_msg *msg
       snprintf(state->user.data, MAX_DATA_LENGTH, YELLOW "Password" RESET " must be " YELLOW "%d characters" RESET " or " ORANGE "less" RESET, MAX_PASS_LENGTH);
     } else { // If correct formatting
       state->user.online = handle_user_registration(state, 0, words[1], words[2]);
+      if (state->user.online == 1) {
+        api_send(&state->api, state->user.data);
+        send_chat(state);
+        return 0;
+      }
     }
   } else if (count == 3 && strcmp(words[0], "/login") == 0) {
     //Handle /login command
@@ -177,13 +234,23 @@ static int execute_request(struct worker_state *state, const struct api_msg *msg
       snprintf(state->user.data, MAX_DATA_LENGTH, "You're already " YELLOW "logged in" RESET);
     } else {
       state->user.online = handle_user_registration(state, 1, words[1], words[2]);
+      if (state->user.online == 1) {
+        api_send(&state->api, state->user.data);
+        send_chat(state);
+        return 0;
+      }
     }
   } else {
     // Respond with Unrecognized command + their command
     //snprintf(state->user.data, MAX_DATA_LENGTH, YELLOW "Unrecognized command" RESET " \"%s\" with " YELLOW "%d" RESET " parameters", msg->data, count-1);
-    snprintf(state->user.data, MAX_DATA_LENGTH, "%s", buffer);
-    notify_workers(state);
-    return 0;
+    if (state->user.online) {
+      snprintf(state->user.data, MAX_DATA_LENGTH, YELLOW "%s" RESET " %s%s:" RESET " %s", time, state->user.color, state->user.username, buffer);
+      save_chat(state);
+      notify_workers(state, state->user.data);
+      return 0;
+    }
+    
+    snprintf(state->user.data, MAX_DATA_LENGTH, "You must " YELLOW "log-in" RESET " before chatting");
   }
 
   api_send(&state->api, state->user.data);
@@ -240,7 +307,7 @@ static int handle_s2w_read(struct worker_state *state) {
   }
 
   /* notify our client */
-  if (handle_s2w_notification(state) != 0) return -1;
+  if (handle_s2w_notification(state, buf) != 0) return -1;
 
   return 0;
 }

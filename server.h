@@ -24,4 +24,6 @@ struct server_state {
   int child_count;
 };
 
+int* get_children(struct server_state *state);
+
 #endif /* defined(_SERVER_H_) */
