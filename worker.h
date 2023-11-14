@@ -23,7 +23,6 @@ struct worker_state {
   int server_fd;  /* server <-> worker bidirectional notification channel */
   int server_eof;
   struct user_state user;
-  /* TODO worker state variables go here */
 };
 
 __attribute__((noreturn))

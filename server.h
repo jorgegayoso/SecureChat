@@ -7,7 +7,7 @@
 // Worker settings
 #define MAX_DATA_LENGTH 256
 
-#define MIN_PASS_LENGTH 8
+#define MIN_PASS_LENGTH 0
 
 #define MAX_USER_LENGTH 16
 #define MAX_PASS_LENGTH 64

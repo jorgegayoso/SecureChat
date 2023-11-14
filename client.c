@@ -13,7 +13,6 @@ struct client_state {
   struct api_state api;
   int eof;
   struct ui_state ui;
-  int is_waiting;
   /* TODO client state variables go here */
 };
 
@@ -81,7 +80,6 @@ static int client_process_command(struct client_state *state) {
   if (count == 1 && strcmp(words[0], "/exit") == 0) {
     state->eof = 1;
   } else {
-    state->is_waiting = 1;
     api_send(&state->api, message);
   }
 
@@ -127,7 +125,6 @@ static int handle_server_request(struct client_state *state) {
 
   /* clean up state associated with the message */
   api_recv_free(&msg);
-  state->is_waiting = 0;
 
   return success ? 0 : -1;
 }
@@ -143,12 +140,6 @@ static int handle_incoming(struct client_state *state) {
   fd_set readfds;
 
   assert(state);
-
-  // If waiting for server response, don't ask for input
-  if (!state->is_waiting) {
-    //printf("Enter a command: ");
-    //fflush(stdout);
-  }
 
   /* TODO if we have work queued up, this might be a good time to do it */
 
@@ -169,7 +160,7 @@ static int handle_incoming(struct client_state *state) {
   }
 
   /* handle ready file descriptors */
-  if (!state->is_waiting && FD_ISSET(STDIN_FILENO, &readfds)) {
+  if (FD_ISSET(STDIN_FILENO, &readfds)) {
     return client_process_command(state);
   }
   
