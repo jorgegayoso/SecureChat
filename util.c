@@ -5,8 +5,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdarg.h>
+#include <time.h>
 
 #include "util.h"
+
+#define MAX_STRING_LENGTH 1000
 
 int lookup_host_ipv4(const char *hostname, struct in_addr *addr) {
   struct hostent *host;
@@ -53,4 +57,18 @@ int parse_port(const char *str, uint16_t *port_p) {
 
   *port_p = value;
   return 0;
+}
+
+char* get_time() {
+    time_t t;
+    struct tm *tm_info;
+    char *time_str = (char*)malloc(20);; // Adjust the size based on your format
+
+    time(&t);
+    tm_info = localtime(&t);
+
+    // Format the time string
+    strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", tm_info);
+
+    return time_str;
 }

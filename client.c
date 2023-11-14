@@ -13,6 +13,7 @@ struct client_state {
   struct api_state api;
   int eof;
   struct ui_state ui;
+  int is_waiting;
   /* TODO client state variables go here */
 };
 
@@ -51,14 +52,40 @@ static int client_connect(struct client_state *state,
 }
 
 static int client_process_command(struct client_state *state) {
-
   assert(state);
 
-  /* TODO read and handle user command from stdin;
-   * set state->eof if there is no more input (read returns zero)
-   */
+  char buffer[256];
+  char delimiters[] = " \t\n";
+  char *words[5];
+  int count = 0;
+  
+  if (fgets(buffer, sizeof(buffer), stdin) == NULL) {
+      state->eof = 1;
+      return -1;
+  }
 
-  return -1;
+  char *last_new_line = strrchr(buffer, '\n');
+  if (last_new_line != NULL)
+      *last_new_line = '\0';
+
+  char message[256];
+  strcpy(message, buffer);
+
+  char *token = strtok(buffer, delimiters);
+  while (token != NULL && count < 5) {
+      words[count] = token;
+      count++;
+      token = strtok(NULL, delimiters);
+  }
+
+  if (count == 1 && strcmp(words[0], "/exit") == 0) {
+    state->eof = 1;
+  } else {
+    state->is_waiting = 1;
+    api_send(&state->api, message);
+  }
+
+  return 0;
 }
 
 /**
@@ -70,9 +97,9 @@ static int execute_request(
   struct client_state *state,
   const struct api_msg *msg) {
 
-  /* TODO handle request and reply to client */
+  printf("%s\n", msg->data);
 
-  return -1;
+  return 0;
 }
 
 /**
@@ -100,6 +127,7 @@ static int handle_server_request(struct client_state *state) {
 
   /* clean up state associated with the message */
   api_recv_free(&msg);
+  state->is_waiting = 0;
 
   return success ? 0 : -1;
 }
@@ -115,6 +143,12 @@ static int handle_incoming(struct client_state *state) {
   fd_set readfds;
 
   assert(state);
+
+  // If waiting for server response, don't ask for input
+  if (!state->is_waiting) {
+    //printf("Enter a command: ");
+    //fflush(stdout);
+  }
 
   /* TODO if we have work queued up, this might be a good time to do it */
 
@@ -135,9 +169,10 @@ static int handle_incoming(struct client_state *state) {
   }
 
   /* handle ready file descriptors */
-  if (FD_ISSET(STDIN_FILENO, &readfds)) {
+  if (!state->is_waiting && FD_ISSET(STDIN_FILENO, &readfds)) {
     return client_process_command(state);
   }
+  
   /* TODO once you implement encryption you may need to call ssl_has_data
    * here due to buffering (see ssl-nonblock example)
    */
@@ -196,6 +231,8 @@ int main(int argc, char **argv) {
   api_state_init(&state.api, fd);
 
   /* TODO any additional client initialization */
+  setvbuf(stdout, NULL, _IONBF, 0);
+  printf("connected to server %s:%d\n", argv[1], port);
 
   /* client things */
   while (!state.eof && handle_incoming(&state) == 0);

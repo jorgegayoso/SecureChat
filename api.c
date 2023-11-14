@@ -1,5 +1,7 @@
 #include <assert.h>
 #include <string.h>
+#include <unistd.h>
+#include <stdio.h>
 
 #include "api.h"
 
@@ -10,14 +12,35 @@
  * @return        Returns 1 on new message, 0 in case socket was closed,
  *                or -1 in case of error.
  */
+
 int api_recv(struct api_state *state, struct api_msg *msg) {
 
   assert(state);
   assert(msg);
 
-  /* TODO receive a message and store information in *msg */
+  ssize_t bytes_read;
+  char buffer[256];
 
-  return -1;
+  bytes_read = read(state->fd, buffer, sizeof(buffer) - 1);
+
+  if (bytes_read == -1) {
+      perror("error: read socket failed");
+      return -1;
+  } else if (bytes_read == 0) {
+      return 0;
+  }
+
+  buffer[bytes_read] = '\0';
+
+  msg->data = strdup(buffer);
+  if (msg->data == NULL) {
+      perror("error: memory allocation for msg->data failed");
+      return -1;
+  }
+
+  msg->length = bytes_read;
+
+  return 1;
 }
 
 /**
@@ -58,4 +81,18 @@ void api_state_init(struct api_state *state, int fd) {
   state->fd = fd;
 
   /* TODO initialize API state */
+}
+
+int api_send(struct api_state *state, const char *message) {
+  assert(state);
+  assert(message);
+
+  ssize_t sent_bytes = write(state->fd, message, strlen(message));
+
+  if (sent_bytes == -1) {
+    perror("error: write socket failed");
+    return -1;
+  }
+  
+  return 0;
 }

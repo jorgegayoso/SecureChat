@@ -12,20 +12,8 @@
 #include <unistd.h>
 
 #include "util.h"
+#include "server.h"
 #include "worker.h"
-
-#define MAX_CHILDREN 16
-
-struct server_child_state {
-  int worker_fd;  /* server <-> worker bidirectional notification channel */
-  int pending; /* notification pending yes/no */
-};
-
-struct server_state {
-  int sockfd;
-  struct server_child_state children[MAX_CHILDREN];
-  int child_count;
-};
 
 static int create_server_socket(uint16_t port) {
   int fd;
@@ -215,6 +203,9 @@ static int handle_w2s_read(struct server_state *state, int index) {
   if (r == 0){
      handle_s2w_closed(state, index);
      return 0;
+  } else {
+    //handle_client_message(state, index, buf);
+    printf("%s\n", buf);
   }
 
   /* notify each worker */
