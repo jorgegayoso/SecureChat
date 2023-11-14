@@ -12,7 +12,7 @@
 #define MAX_USER_LENGTH 16
 #define MAX_PASS_LENGTH 64
 
-
+// Moved to 'server.h' for clarity
 struct server_child_state {
   int worker_fd;  /* server <-> worker bidirectional notification channel */
   int pending; /* notification pending yes/no */

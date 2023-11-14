@@ -375,8 +375,8 @@ int main(int argc, char **argv) {
   }
 
   /* clean up */
-  remove("users.db");
-  remove("chat.db");
+  remove("users.db"); // Deleter 'users.db' file
+  remove("chat.db"); // Deleter 'chat.db' file
   server_state_free(&state);
   close(state.sockfd);
 

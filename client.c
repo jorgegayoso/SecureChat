@@ -20,8 +20,7 @@ struct client_state {
  * @brief Connects to @hostname on port @port and returns the
  *        connection fd. Fails with -1.
  */
-static int client_connect(struct client_state *state,
-  const char *hostname, uint16_t port) {
+static int client_connect(struct client_state *state, const char *hostname, uint16_t port) {
   int fd;
   struct sockaddr_in addr;
 
@@ -58,7 +57,7 @@ static int client_process_command(struct client_state *state) {
   char *words[5];
   int count = 0;
   
-  if (fgets(buffer, sizeof(buffer), stdin) == NULL) {
+  if (fgets(buffer, sizeof(buffer), stdin) == NULL) { // Read from stdin
       state->eof = 1;
       return -1;
   }
@@ -71,15 +70,15 @@ static int client_process_command(struct client_state *state) {
   strcpy(message, buffer);
 
   char *token = strtok(buffer, delimiters);
-  while (token != NULL && count < 5) {
+  while (token != NULL && count < 5) { // Divide buffer to words
       words[count] = token;
       count++;
       token = strtok(NULL, delimiters);
   }
 
-  if (count == 1 && strcmp(words[0], "/exit") == 0) {
+  if (count == 1 && strcmp(words[0], "/exit") == 0) { // Handle exit command
     state->eof = 1;
-  } else {
+  } else { // Send input to worker
     api_send(&state->api, message);
   }
 
@@ -95,7 +94,7 @@ static int execute_request(
   struct client_state *state,
   const struct api_msg *msg) {
 
-  printf("%s\n", msg->data);
+  printf("%s\n", msg->data); // Print response to stdout
 
   return 0;
 }

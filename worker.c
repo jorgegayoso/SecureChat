@@ -128,6 +128,7 @@ static int handle_user_registration(struct worker_state *state, int is_login, ch
 }
 
 static void save_chat(struct worker_state *state) {
+  // Save a new line to 'chat.db'
   check_file("chat.db");
   FILE *file = fopen("chat.db", "r+");
   
@@ -144,6 +145,7 @@ static void save_chat(struct worker_state *state) {
 }
 
 static void send_chat(struct worker_state *state) {
+  // Send all lines on 'chat.db' to client
   check_file("chat.db");
   FILE *file = fopen("chat.db", "r+");
   
@@ -185,30 +187,33 @@ static int execute_request(struct worker_state *state, const struct api_msg *msg
   char *words[5];
   char *token = strtok(msg->data, " ");
 
-  // Divide string into words
-  while (token != NULL && count < 5) {
+  while (token != NULL && count < 5) { // Divide string into words
       words[count] = token;
       count++;
       token = strtok(NULL, " ");
   }
 
-  if (count == 1 && strcmp(words[0], "/logout") == 0) {
-    // Handle /logout command
-    if (state->user.online == 0) {
-      snprintf(state->user.data, MAX_DATA_LENGTH, "You aren't " YELLOW "logged in" RESET);
+  if (strcmp(words[0], "/logout") == 0) { // Handle logout command (optional)
+    if (count != 1) // If invalid parameter amount
+      snprintf(state->user.data, MAX_DATA_LENGTH, "error: invalid command format");
+    if (state->user.online == 0) { // If not logged in
+      snprintf(state->user.data, MAX_DATA_LENGTH, "error: command not currently available");
+    } else { // Log out
+      state->user.online = 0;
+      snprintf(state->user.data, MAX_DATA_LENGTH, YELLOW "Logged out" RESET);
+    }
+  } else if (strcmp(words[0], "/users") == 0) { // Not implemented
+    if (count != 1) // If invalid parameter amount
+      snprintf(state->user.data, MAX_DATA_LENGTH, "error: invalid command format");
+    else if (state->user.online == 0) {
+      snprintf(state->user.data, MAX_DATA_LENGTH, "error: command not currently available");
     } else {
       state->user.online = 0;
       snprintf(state->user.data, MAX_DATA_LENGTH, YELLOW "Logged out" RESET);
     }
-  } else if (count == 1 && strcmp(words[0], "/users") == 0) {
-    // Handle /logout command
-    if (state->user.online == 0) {
-      snprintf(state->user.data, MAX_DATA_LENGTH, "You aren't " YELLOW "logged in" RESET);
-    } else {
-      state->user.online = 0;
-      snprintf(state->user.data, MAX_DATA_LENGTH, YELLOW "Logged out" RESET);
-    }
-  } else if (count == 2 && strcmp(words[0], "/color") == 0) {
+  } else if (strcmp(words[0], "/color") == 0) { // Change user color (redundant due to test.py)
+    if (count != 2) // If invalid parameter amount
+      snprintf(state->user.data, MAX_DATA_LENGTH, "error: invalid command format");
     if (strcmp(words[1], "red") == 0) {
       state->user.color = RED;
       snprintf(state->user.data, MAX_DATA_LENGTH, "Color changed to " RED "red" RESET);
@@ -224,60 +229,55 @@ static int execute_request(struct worker_state *state, const struct api_msg *msg
     } else {
       snprintf(state->user.data, MAX_DATA_LENGTH, "Unknown color");
     }
-  } else if (strcmp(words[0], "/register") == 0) {
-    if (count != 3) {
+  } else if (strcmp(words[0], "/register") == 0) { // Handle register command
+    if (count != 3) { // If invalid parameter amount
       snprintf(state->user.data, MAX_DATA_LENGTH, "error: invalid command format");
     
     // Handle /register command
     } else if (state->user.online == 1) { // If already logged in
       snprintf(state->user.data, MAX_DATA_LENGTH, "error: command not currently available");
-    } else if (strchr(words[1], '\t') != NULL) {
+    } else if (strchr(words[1], '\t') != NULL) { // If invalid delimiter character in username
       snprintf(state->user.data, MAX_DATA_LENGTH, YELLOW "Username" RESET " contains " RED "invalid" RESET " character: '\t'");
-    } else if (strchr(words[2], '\t') != NULL) {
+    } else if (strchr(words[2], '\t') != NULL) { // If invalid delimiter character in password
       snprintf(state->user.data, MAX_DATA_LENGTH, YELLOW "Password" RESET " contains " RED "invalid" RESET " character: '\t'");
-    } else if (strlen(words[1]) > MAX_USER_LENGTH) {
+    } else if (strlen(words[1]) > MAX_USER_LENGTH) { // If username too long
       snprintf(state->user.data, MAX_DATA_LENGTH, YELLOW "Username" RESET " must be " YELLOW "%d characters" RESET " or " ORANGE "less" RESET, MAX_USER_LENGTH);
-    } else if (strlen(words[2]) < MIN_PASS_LENGTH) {
+    } else if (strlen(words[2]) < MIN_PASS_LENGTH) { // If password too short
       snprintf(state->user.data, MAX_DATA_LENGTH, YELLOW "Password" RESET " must be " YELLOW "%d characters" RESET " or " ORANGE "more" RESET, MIN_PASS_LENGTH);
-    } else if (strlen(words[2]) > MAX_PASS_LENGTH) {
+    } else if (strlen(words[2]) > MAX_PASS_LENGTH) { // If password too long
       snprintf(state->user.data, MAX_DATA_LENGTH, YELLOW "Password" RESET " must be " YELLOW "%d characters" RESET " or " ORANGE "less" RESET, MAX_PASS_LENGTH);
-    } else { // If correct formatting
+    } else { // Try register
       state->user.online = handle_user_registration(state, 0, words[1], words[2]);
-      if (state->user.online == 1) {
+      if (state->user.online == 1) { // If successful, register and login
         api_send(&state->api, state->user.data);
-        send_chat(state);
+        send_chat(state); // Send all past chats
         return 0;
       }
     }
-  } else if (strcmp(words[0], "/login") == 0) {
-    if (count != 3) {
+  } else if (strcmp(words[0], "/login") == 0) { // Handle login command
+    if (count != 3) { // If invalid parameter amount
       snprintf(state->user.data, MAX_DATA_LENGTH, "error: invalid command format");
-    //Handle /login command
     } else if (state->user.online == 1) { // If already logged in
       snprintf(state->user.data, MAX_DATA_LENGTH, "error: command not currently available");
-    } else {
+    } else { // Try login
       state->user.online = handle_user_registration(state, 1, words[1], words[2]);
-      if (state->user.online == 1) {
+      if (state->user.online == 1) { // If successful, login
         api_send(&state->api, state->user.data);
-        send_chat(state);
+        send_chat(state); // Send all past chats
         return 0;
       }
     }
-  } else if (words[0][0] == '/') {
-    snprintf(state->user.data, MAX_DATA_LENGTH, "error: command not currently available");
-  } else {
-    // Respond with Unrecognized command + their command
-    //snprintf(state->user.data, MAX_DATA_LENGTH, YELLOW "Unrecognized command" RESET " \"%s\" with " YELLOW "%d" RESET " parameters", msg->data, count-1);
-    if (state->user.online) {
-      //snprintf(state->user.data, MAX_DATA_LENGTH, YELLOW "%s" RESET " %s%s:" RESET " %s", time, state->user.color, state->user.username, buffer);
+  } else if (words[0][0] == '/') { // If invalid command
+    snprintf(state->user.data, MAX_DATA_LENGTH, "error: unknown command %s", words[0]);
+  } else { // If command is message
+    if (state->user.online) { // If logged in
       snprintf(state->user.data, MAX_DATA_LENGTH, "%s %s: %s", time, state->user.username, buffer);
       save_chat(state);
       notify_workers(state, state->user.data);
       return 0;
+    } else { // If not logged in
+      snprintf(state->user.data, MAX_DATA_LENGTH, "error: command not currently available");
     }
-    
-    //snprintf(state->user.data, MAX_DATA_LENGTH, "You must " YELLOW "log-in" RESET " before chatting");
-    snprintf(state->user.data, MAX_DATA_LENGTH, "error: unknown command %s", words[0]);
   }
 
   api_send(&state->api, state->user.data);
