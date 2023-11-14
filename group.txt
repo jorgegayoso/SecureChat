@@ -1,0 +1,23 @@
+2739820 | jgs306 | Jorge Gayoso      | j.gayosodelosrios@student.vu.nl
+2743943 | jvz240 | Joaquin Vaquero   | j.j.vaqueroortiz@student.vu.nl
+2723271 | gai540 | Guivari Dzar Amri | guivaridzaramri@sstudent.vu.nl 
+
+Jorge
+- Read over to understand, and explain basic framework to other group members
+- Implement Worker functionality
+- User registration
+- Handling incorrect input
+
+Guivari
+- Implement Worker functionality
+- User registration
+- UI & message formatting
+- Old message retention
+- Client exiting
+
+Joaquin
+- Implement Worker functionality
+- User registration
+- Main assignment report (README) writer
+- Debug socket handling
+
