@@ -71,3 +71,18 @@ char* get_time() {
 
     return time_str;
 }
+
+char* remove_start_spaces(char *str) {
+    if (str == NULL) 
+      return NULL;
+
+    // Find the index of the first non-space character
+    int space_index = 0;
+    while (str[space_index] == ' ' || str[space_index] == '\t') {
+        space_index++;
+    }
+
+    // Shift the characters to remove leading spaces
+    memmove(str, str + space_index, strlen(str) - space_index + 1);
+    return str;
+}

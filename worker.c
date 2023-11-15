@@ -15,12 +15,24 @@
  * @brief Reads an incoming notification from the server and notifies
  *        the client.
  */
-static int handle_s2w_notification(struct worker_state *state, const char *msg) {
+static int handle_s2w_notification(struct worker_state *state, char *msg) {
   if (strcmp(msg, "") == 0)
     return 0;
-  if (state->user.online == 1)
-    api_send(&state->api, msg);
   
+  char buffer[MAX_DATA_LENGTH];
+  strcpy(buffer, msg);
+  char *word = strtok(msg, "\t");
+  
+  if (word[0] == '@') {
+    char match_user[sizeof(state->user.username) + 1];
+    snprintf(match_user, sizeof(match_user), "@%s", state->user.username);
+    if (strcmp(word, match_user) == 0) {
+      api_send(&state->api, strtok(NULL, ""));
+    }
+  } else if (state->user.online == 1) {
+    api_send(&state->api, buffer);
+  }
+
   return 0;
 }
 
@@ -111,23 +123,22 @@ static int handle_user_registration(struct worker_state *state, int is_login, ch
       }
   }
 
-  fseek(file, 0, SEEK_END);
-  fprintf(file, "%s\t%s\n", user, password);
-
-  fclose(file);
-
   if (is_login) {
     snprintf(state->user.data, MAX_DATA_LENGTH, "error: invalid command format");
     return 0;
   }
 
-  //snprintf(state->user.data, MAX_DATA_LENGTH, YELLOW "User" RESET " registered " GREEN "correctly" YELLOW "\nLogged in" RESET " as %s%s" RESET, state->user.color, user);
+  fseek(file, 0, SEEK_END);
+  fprintf(file, "%s\t%s\n", user, password);
+
+  fclose(file);
+
   snprintf(state->user.data, MAX_DATA_LENGTH, "registration succeeded");
   snprintf(state->user.username, MAX_DATA_LENGTH, "%s", user);
   return 1;
 }
 
-static void save_chat(struct worker_state *state) {
+static void save_chat(struct worker_state *state, const char *time, const char *user, const char *msg) {
   // Save a new line to 'chat.db'
   check_file("chat.db");
   FILE *file = fopen("chat.db", "r+");
@@ -139,7 +150,7 @@ static void save_chat(struct worker_state *state) {
   }
   
   fseek(file, 0, SEEK_END);
-  fprintf(file, "%s\n", state->user.data);
+  fprintf(file, "%s\t%s\t%s\n", time, user, msg);
 
   fclose(file);
 }
@@ -147,7 +158,7 @@ static void save_chat(struct worker_state *state) {
 static void send_chat(struct worker_state *state) {
   // Send all lines on 'chat.db' to client
   check_file("chat.db");
-  FILE *file = fopen("chat.db", "r+");
+  FILE *file = fopen("chat.db", "r");
   
   if (file == NULL) {
       perror("Error opening file");
@@ -160,13 +171,40 @@ static void send_chat(struct worker_state *state) {
   while (fgets(line, sizeof(line), file) != NULL) {
     // Process each row
     char *token = strtok(line, "\t");
+    int count = 0;
+
+    char time[20];
+    char user[MAX_USER_LENGTH];
+    char res[MAX_DATA_LENGTH];
+
+    char user_symbol[sizeof(state->user.username) + 1]; // Used to compare with @username
+    snprintf(user_symbol, sizeof(user_symbol), "@%s", state->user.username);
     
     while (token != NULL) {
       // Process each field
-      api_send(&state->api, token);
+      if (count == 0) {
+        strcpy(time, token);
+      } else if (count == 1) {
+        strcpy(user, token);
+      } else if (count == 2 && token[0] == '@') {
+        char buffer[MAX_DATA_LENGTH - MAX_USER_LENGTH - 20];
+        strcpy(buffer, token);
+
+        char *word = strtok(buffer, " ");
+        char *rest = strtok(NULL, "");
+
+        if (strcmp(word, user_symbol) == 0 || strcmp(user, state->user.username) == 0) {
+          snprintf(res, MAX_DATA_LENGTH, "%s %s: %s %s", time, user, word, rest);
+          api_send(&state->api, res);
+        }
+      } else {
+        snprintf(res, MAX_DATA_LENGTH, "%s %s: %s", time, user, token);
+        api_send(&state->api, res);
+      }
       
       // Move to the next field
       token = strtok(NULL, "\t");
+      count++;
     }
   }
 
@@ -269,10 +307,27 @@ static int execute_request(struct worker_state *state, const struct api_msg *msg
     }
   } else if (words[0][0] == '/') { // If invalid command
     snprintf(state->user.data, MAX_DATA_LENGTH, "error: unknown command %s", words[0]);
+  } else if (words[0][0] == '@') { // If command is private message
+    if (count < 2) { // If invalid parameter amount
+      snprintf(state->user.data, MAX_DATA_LENGTH, "error: invalid command format");
+    } else if (state->user.online) { // Send private message
+      char notification[MAX_DATA_LENGTH];
+      char *word = strtok(buffer, " ");
+      char *rest = strtok(NULL, "");
+      char new_msg[sizeof(word) + sizeof(rest) + 1];
+
+      snprintf(new_msg, MAX_DATA_LENGTH, "%s %s", remove_start_spaces(word), remove_start_spaces(rest));
+      snprintf(notification, MAX_DATA_LENGTH, "%s\t%s %s: %s", words[0], time, state->user.username, new_msg);
+      snprintf(state->user.data, MAX_DATA_LENGTH, "%s %s: %s", time, state->user.username, new_msg);
+      save_chat(state, time, state->user.username, new_msg);
+      notify_workers(state, notification);
+    } else { // If not logged in
+      snprintf(state->user.data, MAX_DATA_LENGTH, "error: command not currently available");
+    }
   } else { // If command is message
     if (state->user.online) { // If logged in
-      snprintf(state->user.data, MAX_DATA_LENGTH, "%s %s: %s", time, state->user.username, buffer);
-      save_chat(state);
+      snprintf(state->user.data, MAX_DATA_LENGTH, "%s %s: %s", time, state->user.username, remove_start_spaces(buffer));
+      save_chat(state, time, state->user.username, remove_start_spaces(buffer));
       notify_workers(state, state->user.data);
       return 0;
     } else { // If not logged in

@@ -114,17 +114,6 @@ static void close_server_handles(struct server_state *state) {
   }
 }
 
-int* get_children(struct server_state *state) {
-  int size = sizeof(state->children);
-  int *children = malloc(size);
-
-  for (int i = 0; i < size; i++) {
-    children[i] = state->children[i].worker_fd;
-  }
-
-  return children;
-}
-
 static int handle_connection(struct server_state *state) {
   struct sockaddr addr;
   socklen_t addrlen = sizeof(addr);
@@ -375,8 +364,8 @@ int main(int argc, char **argv) {
   }
 
   /* clean up */
-  remove("users.db"); // Deleter 'users.db' file
-  remove("chat.db"); // Deleter 'chat.db' file
+  remove("users.db"); // Delete 'users.db' file
+  remove("chat.db"); // Delete 'chat.db' file
   server_state_free(&state);
   close(state.sockfd);
 
