@@ -1,0 +1,2 @@
+connected to server localhost:12652
+error: user erik already exists

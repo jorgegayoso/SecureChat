@@ -1,0 +1,2 @@
+connected to server localhost:12674
+error: unknown command /loginer

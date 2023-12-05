@@ -1,0 +1,2 @@
+connected to server localhost:12658
+error: invalid credentials

@@ -1,0 +1,2 @@
+connected to server localhost:12659
+error: invalid command format

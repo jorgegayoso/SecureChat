@@ -1,0 +1,2 @@
+connected to server localhost:12656
+authentication succeeded

@@ -19,6 +19,8 @@
 static int handle_s2w_notification(struct worker_state *state, char *msg) {
   if (strcmp(msg, "") == 0)
     return 0;
+
+    // TODO: Implement decryption of server message with client ptivate key
   
   char buffer[MAX_DATA_LENGTH];
   strcpy(buffer, msg);
@@ -117,7 +119,7 @@ static int add_user(struct worker_state *state, const char *username, const char
   sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
 
   if (sqlite3_step(stmt) == SQLITE_ROW) {
-    snprintf(state->user.data, MAX_DATA_LENGTH, "username already exists");
+    snprintf(state->user.data, MAX_DATA_LENGTH, "error: user %s already exists", username);
   } else {
     // Add the new user
     const char *insert_str = "INSERT INTO users (username, password) VALUES (?, ?);";
@@ -183,13 +185,13 @@ static int authenticate_user(struct worker_state *state, const char *username, c
       sqlite3_close(db);
       return 1;
     } else { // Incorrect password
-      snprintf(state->user.data, MAX_DATA_LENGTH, "error: invalid command format");
+      snprintf(state->user.data, MAX_DATA_LENGTH, "error: invalid credentials");
       sqlite3_finalize(stmt);
       sqlite3_close(db);
       return 0;
     }
   } else { // Username does not exist
-    snprintf(state->user.data, MAX_DATA_LENGTH, "error: invalid command format");
+    snprintf(state->user.data, MAX_DATA_LENGTH, "error: invalid credentials");
     sqlite3_finalize(stmt);
     sqlite3_close(db);
     return 0;
@@ -268,7 +270,7 @@ static void send_chat_entries(struct worker_state *state) {
 
   char res[MAX_DATA_LENGTH]; // Data to send
   char user_symbol[sizeof(state->user.username) + 1]; // Used to compare with @username
-  snprintf(user_symbol, sizeof(user_symbol), "@%s", state->user.username);
+  //snprintf(user_symbol, sizeof(user_symbol), "@%s", state->user.username);
 
   // Process each entry
   while (sqlite3_step(stmt) == SQLITE_ROW) {
@@ -390,7 +392,7 @@ static int execute_request(struct worker_state *state, const struct api_msg *msg
   } else if (words[0][0] == '@') { // If command is private message
     if (count < 2) { // If invalid parameter amount
       snprintf(state->user.data, MAX_DATA_LENGTH, "error: invalid command format");
-    } else if (state->user.online) { // Send private message
+    } else if ( state->user.online) { // Send private message
       char notification[MAX_DATA_LENGTH]; // This looks stupid
       char *word = strtok(buffer, " ");
       char *rest = strtok(NULL, "");
