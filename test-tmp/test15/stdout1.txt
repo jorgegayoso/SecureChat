@@ -1,3 +1,0 @@
-connected to server localhost:12662
-authentication succeeded
-2023-11-05 18:08:07 erik: pubmsg1

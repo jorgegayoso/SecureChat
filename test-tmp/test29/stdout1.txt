@@ -1,2 +1,0 @@
-connected to server localhost:12676
-error: command not currently available

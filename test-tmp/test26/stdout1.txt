@@ -1,2 +1,0 @@
-connected to server localhost:12673
-error: unknown command /make

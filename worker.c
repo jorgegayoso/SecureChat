@@ -333,24 +333,7 @@ static int execute_request(struct worker_state *state, const struct api_msg *msg
       state->user.online = 0;
       snprintf(state->user.data, MAX_DATA_LENGTH, YELLOW "error: " RESET "command not implemented");
     }
-  } else if (strcmp(words[0], "/color") == 0) { // Change user color (redundant due to test.py)
-    if (count != 2) // If invalid parameter amount
-      snprintf(state->user.data, MAX_DATA_LENGTH, "error: invalid command format");
-    if (strcmp(words[1], "red") == 0) {
-      state->user.color = RED;
-      snprintf(state->user.data, MAX_DATA_LENGTH, "Color changed to " RED "red" RESET);
-    } else if (strcmp(words[1], "orange") == 0) {
-      state->user.color = ORANGE;
-      snprintf(state->user.data, MAX_DATA_LENGTH, "Color changed to " ORANGE "orange" RESET);
-    } else if (strcmp(words[1], "yellow") == 0) {
-      state->user.color = YELLOW;
-      snprintf(state->user.data, MAX_DATA_LENGTH, "Color changed to " YELLOW "yellow" RESET);
-    } else if (strcmp(words[1], "green") == 0) {
-      state->user.color = GREEN;
-      snprintf(state->user.data, MAX_DATA_LENGTH, "Color changed to " GREEN "green" RESET);
-    } else {
-      snprintf(state->user.data, MAX_DATA_LENGTH, "Unknown color");
-    }
+
   } else if (strcmp(words[0], "/register") == 0) { // Handle register command
     if (count != 3) { // If invalid parameter amount
       snprintf(state->user.data, MAX_DATA_LENGTH, "error: invalid command format");
@@ -393,6 +376,7 @@ static int execute_request(struct worker_state *state, const struct api_msg *msg
     if (count < 2) { // If invalid parameter amount
       snprintf(state->user.data, MAX_DATA_LENGTH, "error: invalid command format");
     } else if ( state->user.online) { // Send private message
+    
       char notification[MAX_DATA_LENGTH]; // This looks stupid
       char *word = strtok(buffer, " ");
       char *rest = strtok(NULL, "");
@@ -403,6 +387,7 @@ static int execute_request(struct worker_state *state, const struct api_msg *msg
       snprintf(state->user.data, MAX_DATA_LENGTH, "%s %s: %s", time, state->user.username, new_msg);
       add_chat_entry(time, state->user.username, words[0], new_msg); // Save message
       notify_workers(state, notification);
+
     } else { // If not logged in
       snprintf(state->user.data, MAX_DATA_LENGTH, "error: command not currently available");
     }

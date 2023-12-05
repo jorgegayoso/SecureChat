@@ -1,2 +1,0 @@
-connected to server localhost:12651
-registration succeeded

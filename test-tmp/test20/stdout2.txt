@@ -1,6 +1,0 @@
-connected to server localhost:12667
-authentication succeeded
-2023-11-05 18:08:07 erik: pubmsg1
-2023-11-05 18:08:20 erik: pubmsg2
-
-2023-11-05 18:08:48 user2: @erik this is privmsg2
