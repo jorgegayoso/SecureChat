@@ -20,18 +20,54 @@ static int handle_s2w_notification(struct worker_state *state, char *msg) {
   if (strcmp(msg, "") == 0)
     return 0;
 
-    // TODO: Implement decryption of server message with client ptivate key
+  // TODO: Implement decryption of server message with client ptivate key
   
   char buffer[MAX_DATA_LENGTH];
   strcpy(buffer, msg);
   char *word = strtok(msg, "\t");
   
+  // sending of messages
   if (word[0] == '@') {
-    char match_user[sizeof(state->user.username) + 1];
-    snprintf(match_user, sizeof(match_user), "@%s", state->user.username);
-    if (strcmp(word, match_user) == 0) {
-      api_send(&state->api, strtok(NULL, ""));
-    }
+
+    // char *target_user = NULL;
+    // char target_user[sizeof(word) + 1];
+    // memmove(target_user, word+1, strlen(word));
+
+    // sqlite3 *db;
+    // int rc = sqlite3_open("chat.db", &db);
+
+    // if (rc != SQLITE_OK) {
+    //   snprintf(state->user.data, MAX_DATA_LENGTH, "Cannot open database: %s", sqlite3_errmsg(db));
+    //   return 0;
+    // }
+
+    // // Check if the user exists
+    // const char *username_str = "SELECT * FROM users WHERE username = ?;";
+    // sqlite3_stmt *stmt;
+    // rc = sqlite3_prepare_v2(db, username_str, -1, &stmt, 0);
+
+    // if (rc != SQLITE_OK) {
+    //   fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+    //   exit(rc);
+    // }
+
+    // sqlite3_bind_text(stmt, 1, target_user, -1, SQLITE_STATIC);
+
+    // if (sqlite3_step(stmt) == SQLITE_ROW) {
+      char match_user[sizeof(state->user.username) + 1];
+      snprintf(match_user, sizeof(match_user), "@%s", state->user.username);
+      if (strcmp(word, match_user) == 0) {
+        api_send(&state->api, strtok(NULL, ""));
+      }
+    // } else {
+      // snprintf(state->user.data, MAX_DATA_LENGTH, "privmsg_failed");
+      // api_send(&state->api, state->user.data);
+      // I FUCKED UP FOR FUCKS SAEKE MATE
+    // }
+
+    // sqlite3_finalize(stmt);
+    // sqlite3_close(db);
+
   } else if (state->user.online == 1) {
     api_send(&state->api, buffer);
   }
@@ -115,7 +151,7 @@ static int add_user(struct worker_state *state, const char *username, const char
     fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
     exit(rc);
   }
-
+  printf("Username: %s", username);
   sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
 
   if (sqlite3_step(stmt) == SQLITE_ROW) {
@@ -270,7 +306,7 @@ static void send_chat_entries(struct worker_state *state) {
 
   char res[MAX_DATA_LENGTH]; // Data to send
   char user_symbol[sizeof(state->user.username) + 1]; // Used to compare with @username
-  //snprintf(user_symbol, sizeof(user_symbol), "@%s", state->user.username);
+  snprintf(user_symbol, sizeof(user_symbol), "@%s", state->user.username);
 
   // Process each entry
   while (sqlite3_step(stmt) == SQLITE_ROW) {
@@ -376,17 +412,68 @@ static int execute_request(struct worker_state *state, const struct api_msg *msg
     if (count < 2) { // If invalid parameter amount
       snprintf(state->user.data, MAX_DATA_LENGTH, "error: invalid command format");
     } else if ( state->user.online) { // Send private message
-    
-      char notification[MAX_DATA_LENGTH]; // This looks stupid
-      char *word = strtok(buffer, " ");
-      char *rest = strtok(NULL, "");
-      char new_msg[sizeof(word) + sizeof(rest) + 1];
 
-      snprintf(new_msg, MAX_DATA_LENGTH, "%s %s", remove_start_spaces(word), remove_start_spaces(rest)); // Remove extra spaces
-      snprintf(notification, MAX_DATA_LENGTH, "%s\t%s %s: %s", words[0], time, state->user.username, new_msg);
-      snprintf(state->user.data, MAX_DATA_LENGTH, "%s %s: %s", time, state->user.username, new_msg);
-      add_chat_entry(time, state->user.username, words[0], new_msg); // Save message
-      notify_workers(state, notification);
+      
+      // char notification[MAX_DATA_LENGTH]; // This looks stupid
+      // char *word = strtok(buffer, " ");
+      // char *rest = strtok(NULL, "");
+      // char new_msg[sizeof(word) + sizeof(rest) + 1];
+      
+      // snprintf(new_msg, MAX_DATA_LENGTH, "%s %s", remove_start_spaces(word), remove_start_spaces(rest)); // Remove extra spaces
+      // snprintf(notification, MAX_DATA_LENGTH, "%s\t%s %s: %s", words[0], time, state->user.username, new_msg);
+      // snprintf(state->user.data, MAX_DATA_LENGTH, "%s %s: %s", time, state->user.username, new_msg);
+      // add_chat_entry(time, state->user.username, words[0], new_msg); // Save message
+      // notify_workers(state, notification);
+      // psintf("added into archive words[o]: %s", words[0]);
+
+
+      int user_found = 0;
+      char target_user[sizeof(words[0]) + 1];
+      memmove(target_user, words[0]+1, strlen(words[0]));
+      printf("Target user: %s\n", target_user);
+      sqlite3 *db;
+      int rc = sqlite3_open("chat.db", &db);
+
+      if (rc != SQLITE_OK) {
+        snprintf(state->user.data, MAX_DATA_LENGTH, "Cannot open database: %s", sqlite3_errmsg(db));
+        return 0;
+      }
+
+      // // Check if the user exists
+      const char *username_str = "SELECT * FROM users WHERE username = ?;";
+      sqlite3_stmt *stmt;
+
+      rc = sqlite3_prepare_v2(db, username_str, -1, &stmt, 0);
+
+      if (rc != SQLITE_OK) {
+        fprintf(stderr, "SQL error: %s", sqlite3_errmsg(db));
+        exit(rc);
+      }
+
+      sqlite3_bind_text(stmt, 1, target_user, -1, SQLITE_STATIC);
+
+      if (sqlite3_step(stmt) == SQLITE_ROW) {
+        user_found = 1;
+      }
+    
+      sqlite3_finalize(stmt);
+      sqlite3_close(db);
+
+      if (user_found == 1) {
+        char notification[MAX_DATA_LENGTH]; // This looks stupid
+        char *word = strtok(buffer, " ");
+        char *rest = strtok(NULL, "");
+        char new_msg[sizeof(word) + sizeof(rest) + 1];
+        
+        snprintf(new_msg, MAX_DATA_LENGTH, "%s %s", remove_start_spaces(word), remove_start_spaces(rest)); // Remove extra spaces
+        snprintf(notification, MAX_DATA_LENGTH, "%s\t%s %s: %s", words[0], time, state->user.username, new_msg);
+        snprintf(state->user.data, MAX_DATA_LENGTH, "%s %s: %s", time, state->user.username, new_msg);
+        add_chat_entry(time, state->user.username, words[0], new_msg); // Save message
+        notify_workers(state, notification);
+      } else {
+        snprintf(state->user.data, MAX_DATA_LENGTH, "error: user not found");
+      }
+
 
     } else { // If not logged in
       snprintf(state->user.data, MAX_DATA_LENGTH, "error: command not currently available");
