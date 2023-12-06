@@ -10,6 +10,8 @@
 #include <sys/time.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <sqlite3.h>
+
 
 #include "util.h"
 #include "server.h"
@@ -340,6 +342,50 @@ static int handle_incoming(struct server_state *state) {
   return success ? 0 : -1;
 }
 
+static void create_database() {
+  // SQL is so annoying pls help
+  sqlite3 *db;
+  char *err = 0;
+
+  int rc = sqlite3_open("chat.db", &db);
+
+  if (rc != SQLITE_OK) {
+    fprintf(stderr, "Cannot open database: %s\n", sqlite3_errmsg(db));
+    exit(rc);
+  }
+
+  // Create a table if it doesn't exist
+  const char *users_table = "CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT, online INT);";
+  rc = sqlite3_exec(db, users_table, 0, 0, &err);
+
+  if (rc != SQLITE_OK) {
+    fprintf(stderr, "Server SQL error: %s\n", err);
+    sqlite3_free(err);
+    exit(rc);
+  }
+
+  const char *chat_table = "CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, time TEXT, user TEXT, privacy TEXT, message TEXT);";
+  rc = sqlite3_exec(db, chat_table, 0, 0, &err);
+
+  if (rc != SQLITE_OK) {
+    fprintf(stderr, "Server SQL error: %s\n", err);
+    sqlite3_free(err);
+    exit(rc);
+  }
+
+  const char *reset_online = "UPDATE users SET online = 0;";
+  rc = sqlite3_exec(db, reset_online, 0, 0, &err);
+
+  if (rc != SQLITE_OK) {
+    fprintf(stderr, "Server SQL error: %s\n", err);
+    sqlite3_free(err);
+    exit(rc);
+  }
+
+
+  sqlite3_close(db);
+}
+
 int main(int argc, char **argv) {
   uint16_t port;
   struct server_state state;
@@ -352,6 +398,8 @@ int main(int argc, char **argv) {
   server_state_init(&state);
   register_signals();
   /* TODO any additional server initialization */
+  create_database();
+
 
   /* start listening for connections */
   state.sockfd = create_server_socket(port);
