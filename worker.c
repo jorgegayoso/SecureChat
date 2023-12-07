@@ -22,8 +22,8 @@
 static int handle_s2w_notification(struct worker_state *state, char *msg) {
   if (strcmp(msg, "") == 0)
     return 0;
-
-  // TODO: Implement decryption of server message with client ptivate key
+  
+  // TODO: Implement decryption of server message with client private key
   
   char buffer[MAX_DATA_LENGTH];
   strcpy(buffer, msg);
@@ -72,7 +72,7 @@ static char *generate_hash(char *buf) {
   ssize_t len = strlen(buf);
   EVP_DigestUpdate(ctx, buf, len);
   
-  unsigned char *hash = (unsigned char *)malloc(EVP_MAX_MD_SIZE);
+  unsigned char *hash = (unsigned char *)malloc(MAX_DATA_LENGTH);
   unsigned int hashlen = 0;
 
   EVP_DigestFinal(ctx, hash, &hashlen);
@@ -135,7 +135,7 @@ static int add_user(struct worker_state *state, const char *username, char *pass
       snprintf(state->user.username, MAX_DATA_LENGTH, "%s", username);
       snprintf(state->user.data, MAX_DATA_LENGTH, "registration succeeded");
       succeeded = 1;
-    }
+    } free(hash);
   }
 
   // Close database
@@ -168,7 +168,7 @@ static void set_online_status(const char *user, int online) {
     fprintf(stderr, "6 SQL error: %s\n", sqlite3_errmsg(db));
     exit(rc);
   }
-  char buf[256];
+  char buf[MAX_DATA_LENGTH];
   sprintf(buf, "%d", online);
 
   sqlite3_bind_text(stmt, 1, buf, -1, SQLITE_STATIC);
@@ -214,11 +214,13 @@ static int authenticate_user(struct worker_state *state, const char *username, c
       snprintf(state->user.data, MAX_DATA_LENGTH, "authentication succeeded");
       sqlite3_finalize(stmt);
       sqlite3_close(db);
+      free(hash);
       return 1;
     } else { // Incorrect password
       snprintf(state->user.data, MAX_DATA_LENGTH, "error: invalid credentials");
       sqlite3_finalize(stmt);
       sqlite3_close(db);
+      free(hash);
       return 0;
     }
   } else { // Username does not exist
@@ -378,7 +380,7 @@ static void send_online_users(struct worker_state *state) {
     }
 
     const char *online_user = (const char *)sqlite3_column_text(stmt, 0);
-    char buffer[256];
+    char buffer[MAX_DATA_LENGTH];
     snprintf(buffer, MAX_DATA_LENGTH, "%s\n", online_user);
     api_send(&state->api, buffer);
   }
@@ -546,7 +548,6 @@ static int handle_s2w_read(struct worker_state *state) {
   r = read(state->server_fd, buf, sizeof(buf));
   
   if (r == 0) {
-    printf("A\n");
     state->server_eof = 1;
     return 0;
   }

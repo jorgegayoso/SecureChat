@@ -53,12 +53,14 @@ static SSL *client_connect(struct client_state *state, const char *hostname, uin
 
   // Set up SSL on the socket
   SSL *ssl = SSL_new(state->ssl_ctx);
+  //SSL_set_verify(ssl, SSL_VERIFY_PEER, NULL);
   SSL_set_fd(ssl, fd);
 
-  if (SSL_connect(ssl) <= 0) {
-      ERR_print_errors_fp(stderr);
-      close(fd);
-      return NULL;
+  if (SSL_connect(ssl) != 1) {
+    ERR_print_errors_fp(stderr);
+    //fprintf(stderr, "verify result=%ld\n", SSL_get_verify_result(ssl));
+    close(fd);
+    return NULL;
   }
 
   return ssl;
@@ -208,7 +210,9 @@ static int client_state_init(struct client_state *state) {
   SSL_library_init();
   OpenSSL_add_all_algorithms();
   SSL_load_error_strings();
+
   state->ssl_ctx = SSL_CTX_new(SSLv23_client_method());
+  //SSL_CTX_load_verify_locations(state->ssl_ctx, "ttpkeys/X509_Certicifate.crt", NULL);
   
   // Load server's public certificate
   if (SSL_CTX_use_certificate_file(state->ssl_ctx, "clientkeys/X509_Certificate.crt", SSL_FILETYPE_PEM) <= 0) {
