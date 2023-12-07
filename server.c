@@ -397,7 +397,8 @@ int main(int argc, char **argv) {
   /* preparations */
   server_state_init(&state);
   register_signals();
-  /* TODO any additional server initialization */
+  
+  // Create 'chat.db' file
   create_database();
 
 
