@@ -404,6 +404,9 @@ static int execute_request(struct worker_state *state, const struct api_msg *msg
   char *words[5];
   char *token = strtok(msg->data, " ");
 
+  const char *script_path = "ttp.py";
+  char py_command[256];
+
   while (token != NULL && count < 5) { // Divide string into words
     words[count] = token;
     count++;
@@ -448,6 +451,11 @@ static int execute_request(struct worker_state *state, const struct api_msg *msg
     } else { // Try register
       state->user.online = add_user(state, words[1], words[2]);
       if (state->user.online == 1) { // If successful, register and login
+
+        const char *client_name = words[1];
+        snprintf(py_command, sizeof(py_command), "python3 %s register_user %s", script_path, client_name);
+
+        system(py_command);
         api_send(&state->api, state->user.data);
         send_chat_entries(state); // Send all past chats
         return 0;
