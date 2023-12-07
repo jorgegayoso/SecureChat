@@ -5,6 +5,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sqlite3.h>
+
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
@@ -64,7 +65,23 @@ static int notify_workers(struct worker_state *state, const char *msg) {
   return 0;
 }
 
-static int add_user(struct worker_state *state, const char *username, const char *password) {
+static char *generate_hash(char *buf) {
+  EVP_MD_CTX *ctx = EVP_MD_CTX_new();
+  EVP_DigestInit(ctx, EVP_sha256());
+
+  ssize_t len = strlen(buf);
+  EVP_DigestUpdate(ctx, buf, len);
+  
+  unsigned char *hash = (unsigned char *)malloc(EVP_MAX_MD_SIZE);
+  unsigned int hashlen = 0;
+
+  EVP_DigestFinal(ctx, hash, &hashlen);
+  EVP_MD_CTX_free(ctx);
+
+  return (char *)hash;
+}
+
+static int add_user(struct worker_state *state, const char *username, char *password) {
   sqlite3 *db; // Open 'chat.db' file
   char *err = 0;
   int succeeded = 0;
@@ -100,8 +117,11 @@ static int add_user(struct worker_state *state, const char *username, const char
       exit(rc);
     }
 
+    // Generate and store hash
+    char *hash = generate_hash(password);
+
     sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 2, password, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, hash, -1, SQLITE_STATIC);
 
     rc = sqlite3_step(stmt);
 
@@ -165,7 +185,7 @@ static void set_online_status(const char *user, int online) {
   sqlite3_close(db);
 }
 
-static int authenticate_user(struct worker_state *state, const char *username, const char *password) {
+static int authenticate_user(struct worker_state *state, const char *username, char *password) {
   sqlite3 *db; // Open 'chat.db' file
   int rc = sqlite3_open("chat.db", &db);
 
@@ -185,10 +205,11 @@ static int authenticate_user(struct worker_state *state, const char *username, c
 
   sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
 
-  if (sqlite3_step(stmt) == SQLITE_ROW) { // Username exists, check if passwords match
+  if (sqlite3_step(stmt) == SQLITE_ROW) { // Username exists, check if password hashes match
     const char *stored_password = (const char *)sqlite3_column_text(stmt, 1);
+    char *hash = generate_hash(password);
 
-    if (strcmp(stored_password, password) == 0) { // Authentication succeeded
+    if (strcmp(stored_password, hash) == 0) { // Authentication succeeded
       snprintf(state->user.username, MAX_DATA_LENGTH, "%s", username);
       snprintf(state->user.data, MAX_DATA_LENGTH, "authentication succeeded");
       sqlite3_finalize(stmt);
