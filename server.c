@@ -11,13 +11,56 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <sqlite3.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 
 
 #include "util.h"
 #include "server.h"
 #include "worker.h"
 
-static int create_server_socket(uint16_t port) {
+struct server_child_state {
+  int worker_fd;  /* server <-> worker bidirectional notification channel */
+  int pending; /* notification pending yes/no */
+};
+
+struct server_state {
+  int sockfd;
+  struct server_child_state children[MAX_CHILDREN];
+  int child_count;
+  SSL_CTX *ssl_ctx;
+  SSL *ssl;
+};
+
+static SSL_CTX *init_server_context(void) {
+  SSL_CTX *ctx;
+
+  SSL_library_init();
+  OpenSSL_add_all_algorithms();
+  SSL_load_error_strings();
+
+  ctx = SSL_CTX_new(SSLv23_server_method());
+
+  if (!ctx) {
+      ERR_print_errors_fp(stderr);
+      exit(EXIT_FAILURE);
+  }
+
+  // Load the certificate and key
+  if (SSL_CTX_use_certificate_file(ctx, CERT_FILE, SSL_FILETYPE_PEM) <= 0) {
+      ERR_print_errors_fp(stderr);
+      exit(EXIT_FAILURE);
+  }
+
+  if (SSL_CTX_use_PrivateKey_file(ctx, KEY_FILE, SSL_FILETYPE_PEM) <= 0) {
+      ERR_print_errors_fp(stderr);
+      exit(EXIT_FAILURE);
+  }
+
+  return ctx;
+}
+
+static int create_server_socket(struct server_state *state, uint16_t port) {
   int fd;
   struct sockaddr_in addr;
 
@@ -47,6 +90,7 @@ static int create_server_socket(uint16_t port) {
 
 error:
   close(fd);
+  SSL_CTX_free(state->ssl_ctx);
   return -1;
 }
 
@@ -122,6 +166,7 @@ static int handle_connection(struct server_state *state) {
   int connfd;
   pid_t pid;
   int sockets[2];
+  SSL *ssl;
 
   assert(state);
 
@@ -151,8 +196,19 @@ static int handle_connection(struct server_state *state) {
   if (pid == 0) {
     /* worker process */
     close(sockets[0]);
+
+    ssl = SSL_new(state->ssl_ctx);
+    SSL_set_fd(ssl, connfd);
+
+    if (SSL_accept(ssl) <= 0) {
+      ERR_print_errors_fp(stderr);
+      close(connfd);
+      close(sockets[1]);
+      exit(1); 
+    }
+
     close_server_handles(state);
-    worker_start(connfd, sockets[1]);
+    worker_start(ssl, sockets[1]);
     /* never reached */
     exit(1);
   }
@@ -196,13 +252,9 @@ static int handle_w2s_read(struct server_state *state, int index) {
    */
   errno = 0;
   r = read(state->children[index].worker_fd, buf, sizeof(buf));
-  if (r < 0) {
-    perror("error: read socketpair failed");
-    return -1;
-  }
 
   /* this means the worker closed its end of the socket pair */
-  if (r == 0){
+  if (r < 0){
     handle_s2w_closed(state, index);
     return 0;
   }
@@ -270,7 +322,7 @@ static int server_state_init(struct server_state *state) {
     state->children[i].worker_fd = -1;
   }
 
-  /* TODO any additional server state initialization */
+  state->ssl_ctx = init_server_context();
 
   return 0;
 }
@@ -343,7 +395,6 @@ static int handle_incoming(struct server_state *state) {
 }
 
 static void create_database() {
-  // SQL is so annoying pls help
   sqlite3 *db;
   char *err = 0;
 
@@ -403,7 +454,7 @@ int main(int argc, char **argv) {
 
 
   /* start listening for connections */
-  state.sockfd = create_server_socket(port);
+  state.sockfd = create_server_socket(&state, port);
   if (state.sockfd < 0) return 1;
 
   /* wait for connections */
@@ -413,8 +464,6 @@ int main(int argc, char **argv) {
   }
 
   /* clean up */
-  remove("users.db"); // Delete 'users.db' file
-  remove("chat.db"); // Delete 'chat.db' file
   server_state_free(&state);
   close(state.sockfd);
 

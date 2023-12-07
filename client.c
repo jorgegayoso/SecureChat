@@ -4,23 +4,28 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#include <fcntl.h>
 
 #include "api.h"
 #include "ui.h"
 #include "util.h"
 
+// ----- STRUCTS -----
 struct client_state {
   struct api_state api;
   int eof;
   struct ui_state ui;
-  /* TODO client state variables go here */
+  SSL_CTX *ssl_ctx;
 };
 
+// ----- MAIN -----
 /**
  * @brief Connects to @hostname on port @port and returns the
  *        connection fd. Fails with -1.
  */
-static int client_connect(struct client_state *state, const char *hostname, uint16_t port) {
+static SSL *client_connect(struct client_state *state, const char *hostname, uint16_t port) {
   int fd;
   struct sockaddr_in addr;
 
@@ -28,7 +33,7 @@ static int client_connect(struct client_state *state, const char *hostname, uint
   assert(hostname);
 
   /* look up hostname */
-  if (lookup_host_ipv4(hostname, &addr.sin_addr) != 0) return -1;
+  if (lookup_host_ipv4(hostname, &addr.sin_addr) != 0) return NULL;
   addr.sin_family = AF_INET;
   addr.sin_port = htons(port);
 
@@ -36,17 +41,27 @@ static int client_connect(struct client_state *state, const char *hostname, uint
   fd = socket(AF_INET, SOCK_STREAM, 0);
   if (fd < 0) {
     perror("error: cannot allocate server socket");
-    return -1;
+    return NULL;
   }
 
   /* connect to server */
   if (connect(fd, (struct sockaddr *) &addr, sizeof(addr)) != 0) {
     perror("error: cannot connect to server");
     close(fd);
-    return -1;
+    return NULL;
   }
 
-  return fd;
+  // Set up SSL on the socket
+  SSL *ssl = SSL_new(state->ssl_ctx);
+  SSL_set_fd(ssl, fd);
+
+  if (SSL_connect(ssl) <= 0) {
+      ERR_print_errors_fp(stderr);
+      close(fd);
+      return NULL;
+  }
+
+  return ssl;
 }
 
 static int client_process_command(struct client_state *state) {
@@ -113,7 +128,6 @@ static int handle_server_request(struct client_state *state) {
   r = api_recv(&state->api, &msg);
   if (r < 0) return -1;
   if (r == 0) {
-    state->eof = 1;
     return 0;
   }
 
@@ -128,6 +142,19 @@ static int handle_server_request(struct client_state *state) {
   return success ? 0 : -1;
 }
 
+static int set_nonblocking(int fd) {
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags == -1) {
+        perror("fcntl");
+        return -1;
+    }
+    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+        perror("fcntl");
+        return -1;
+    }
+    return 0;
+}
+
 /**
  * @brief register for multiple IO event, process one
  *        and return. Returns 0 if the event was processed
@@ -140,15 +167,16 @@ static int handle_incoming(struct client_state *state) {
 
   assert(state);
 
-  /* TODO if we have work queued up, this might be a good time to do it */
-
-  /* TODO ask user for input if needed */
+  // Set non-blocking SSL
+  if (set_nonblocking(SSL_get_fd(state->api.ssl)) == -1) {
+    return -1;
+  }
 
   /* list file descriptors to wait for */
   FD_ZERO(&readfds);
   FD_SET(STDIN_FILENO, &readfds);
-  FD_SET(state->api.fd, &readfds);
-  fdmax = state->api.fd;
+  FD_SET(SSL_get_fd(state->api.ssl), &readfds);
+  fdmax = SSL_get_fd(state->api.ssl);
 
   /* wait for at least one to become ready */
   r = select(fdmax+1, &readfds, NULL, NULL, NULL);
@@ -163,10 +191,7 @@ static int handle_incoming(struct client_state *state) {
     return client_process_command(state);
   }
   
-  /* TODO once you implement encryption you may need to call ssl_has_data
-   * here due to buffering (see ssl-nonblock example)
-   */
-  if (FD_ISSET(state->api.fd, &readfds)) {
+  if (FD_ISSET(SSL_get_fd(state->api.ssl), &readfds)) {
     return handle_server_request(state);
   }
   return 0;
@@ -179,7 +204,17 @@ static int client_state_init(struct client_state *state) {
   /* initialize UI */
   ui_state_init(&state->ui);
 
-  /* TODO any additional client state initialization */
+  // Initialize SSL
+  SSL_library_init();
+  OpenSSL_add_all_algorithms();
+  SSL_load_error_strings();
+  state->ssl_ctx = SSL_CTX_new(SSLv23_client_method());
+  
+  // Load server's public certificate
+  if (SSL_CTX_use_certificate_file(state->ssl_ctx, "clientkeys/X509_Certificate.crt", SSL_FILETYPE_PEM) <= 0) {
+    ERR_print_errors_fp(stderr);
+    return -1;
+  }
 
   return 0;
 }
@@ -202,7 +237,7 @@ static void usage(void) {
 }
 
 int main(int argc, char **argv) {
-  int fd;
+  SSL *ssl;
   uint16_t port;
   struct client_state state;
 
@@ -214,11 +249,11 @@ int main(int argc, char **argv) {
   client_state_init(&state);
 
   /* connect to server */
-  fd = client_connect(&state, argv[1], port);
-  if (fd < 0) return 1;
+  ssl = client_connect(&state, argv[1], port);
+  if (SSL_get_fd(ssl) < 0) return 1;
 
   /* initialize API */
-  api_state_init(&state.api, fd);
+  api_state_init(&state.api, ssl);
 
   /* TODO any additional client initialization */
   setvbuf(stdout, NULL, _IONBF, 0);
@@ -228,9 +263,12 @@ int main(int argc, char **argv) {
   while (!state.eof && handle_incoming(&state) == 0);
 
   /* clean up */
-  /* TODO any additional client cleanup */
+  SSL_shutdown(ssl);
+  SSL_free(ssl);
+  SSL_CTX_free(state.ssl_ctx);
+
   client_state_free(&state);
-  close(fd);
+  close(SSL_get_fd(ssl));
 
   return 0;
 }

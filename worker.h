@@ -14,7 +14,6 @@ struct user_state {
   int online;
   char username[MAX_USER_LENGTH];
   char data[MAX_DATA_LENGTH];
-  char *color;
 };
 
 struct worker_state {
@@ -26,6 +25,6 @@ struct worker_state {
 };
 
 __attribute__((noreturn))
-void worker_start(int connfd, int server_fd);
+void worker_start(SSL *ssl, int server_fd);
 
 #endif /* !defined(_WORKER_H_) */

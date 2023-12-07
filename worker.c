@@ -5,6 +5,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <sqlite3.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 
 #include "api.h"
 #include "util.h"
@@ -308,7 +310,7 @@ static int check_user_exists(struct worker_state *state, const char *target_user
     return 0;
   }
 
-  // // Check if the user exists
+  // Check if the user exists
   const char *username_str = "SELECT * FROM users WHERE username = ?;";
   sqlite3_stmt *stmt;
 
@@ -521,11 +523,9 @@ static int handle_s2w_read(struct worker_state *state) {
    */
   errno = 0;
   r = read(state->server_fd, buf, sizeof(buf));
-  if (r < 0) {
-    perror("error: read server_fd failed");
-    return -1;
-  }
+  
   if (r == 0) {
+    printf("A\n");
     state->server_eof = 1;
     return 0;
   }
@@ -553,10 +553,10 @@ static int handle_incoming(struct worker_state *state) {
   /* list file descriptors to wait for */
   FD_ZERO(&readfds);
   /* wake on incoming messages from client */
-  FD_SET(state->api.fd, &readfds);
+  FD_SET(SSL_get_fd(state->api.ssl), &readfds);
   /* wake on incoming server notifications */
   if (!state->server_eof) FD_SET(state->server_fd, &readfds);
-  fdmax = max(state->api.fd, state->server_fd);
+  fdmax = max(SSL_get_fd(state->api.ssl), state->server_fd);
 
   /* wait for at least one to become ready */
   r = select(fdmax+1, &readfds, NULL, NULL, NULL);
@@ -567,10 +567,16 @@ static int handle_incoming(struct worker_state *state) {
   }
 
   /* handle ready file descriptors */
-  /* TODO once you implement encryption you may need to call ssl_has_data
-   * here due to buffering (see ssl-nonblock example)
-   */
-  if (FD_ISSET(state->api.fd, &readfds)) {
+  
+  // Wait for at least one to become ready
+  r = select(fdmax + 1, &readfds, NULL, NULL, NULL);
+  if (r < 0) {
+      if (errno == EINTR) return 0;
+      perror("error: select failed");
+      return -1;
+  }
+
+  if (FD_ISSET(SSL_get_fd(state->api.ssl), &readfds)) {
     if (handle_client_request(state) != 0) success = 0;
   }
   if (FD_ISSET(state->server_fd, &readfds)) {
@@ -587,17 +593,16 @@ static int handle_incoming(struct worker_state *state) {
  * @param pipefd_s2w   pipe to be notified by server (can read when notified)
  *
  */
-static int worker_state_init(struct worker_state *state, int connfd, int server_fd) {
+static int worker_state_init(struct worker_state *state, SSL *ssl, int server_fd) {
 
   /* initialize */
   memset(state, 0, sizeof(*state));
   state->server_fd = server_fd;
 
   /* set up API state */
-  api_state_init(&state->api, connfd);
+  api_state_init(&state->api, ssl);
 
   state->user.online = 0;
-  state->user.color = GREEN;
 
   return 0;
 }
@@ -617,7 +622,7 @@ static void worker_state_free(
 
   /* close file descriptors */
   close(state->server_fd);
-  close(state->api.fd);
+  close(SSL_get_fd(state->api.ssl));
 }
 
 /**
@@ -632,12 +637,12 @@ static void worker_state_free(
 
 
 __attribute__((noreturn))
-void worker_start(int connfd, int server_fd) {
+void worker_start(SSL *ssl, int server_fd) {
   struct worker_state state;
   int success = 1;
 
   /* initialize worker state */
-  if (worker_state_init(&state, connfd, server_fd) != 0) {
+  if (worker_state_init(&state, ssl, server_fd) != 0) {
     goto cleanup;
   }
   /* TODO any additional worker initialization */

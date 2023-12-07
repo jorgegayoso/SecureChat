@@ -12,16 +12,7 @@
 #define MAX_USER_LENGTH 16
 #define MAX_PASS_LENGTH 64
 
-// Moved to 'server.h' for clarity
-struct server_child_state {
-  int worker_fd;  /* server <-> worker bidirectional notification channel */
-  int pending; /* notification pending yes/no */
-};
-
-struct server_state {
-  int sockfd;
-  struct server_child_state children[MAX_CHILDREN];
-  int child_count;
-};
+#define CERT_FILE "serverkeys/X509_Certificate.crt"
+#define KEY_FILE "serverkeys/X509_Key.key"
 
 #endif /* defined(_SERVER_H_) */

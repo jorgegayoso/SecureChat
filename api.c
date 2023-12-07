@@ -21,21 +21,32 @@ int api_recv(struct api_state *state, struct api_msg *msg) {
   ssize_t bytes_read;
   char buffer[256];
 
-  bytes_read = read(state->fd, buffer, sizeof(buffer) - 1);
-
+  bytes_read = SSL_read(state->ssl, buffer, sizeof(buffer) - 1);
+  
   if (bytes_read == -1) {
+    int ssl_error = SSL_get_error(state->ssl, bytes_read);
+    if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE) {
+      return 0;
+    } else if (ssl_error != 1) {
       perror("error: read socket failed");
       return -1;
+    }
+
+    int ssl_shutdown = SSL_get_shutdown(state->ssl);
+    if (ssl_shutdown == 0) {
+      printf("server disconnected\n");
+      return -1;
+    }
   } else if (bytes_read == 0) {
-      return 0;
+    return 0;
   }
 
   buffer[bytes_read] = '\0';
 
   msg->data = strdup(buffer);
   if (msg->data == NULL) {
-      perror("error: memory allocation for msg->data failed");
-      return -1;
+    perror("error: memory allocation for msg->data failed");
+    return -1;
   }
 
   msg->length = bytes_read;
@@ -70,24 +81,22 @@ void api_state_free(struct api_state *state) {
  * @param state   API state to be initialized
  * @param fd      File descriptor of connection socket
  */
-void api_state_init(struct api_state *state, int fd) {
+void api_state_init(struct api_state *state, SSL *ssl) {
 
   assert(state);
 
   /* initialize to zero */
   memset(state, 0, sizeof(*state));
 
-  /* store connection socket */
-  state->fd = fd;
-
-  /* TODO initialize API state */
+  // Store SSL instance
+  state->ssl = ssl;
 }
 
 int api_send(struct api_state *state, const char *message) {
   assert(state);
   assert(message);
 
-  ssize_t sent_bytes = write(state->fd, message, strlen(message));
+  ssize_t sent_bytes = SSL_write(state->ssl, message, strlen(message));
 
   if (sent_bytes == -1) {
     perror("error: write socket failed");
